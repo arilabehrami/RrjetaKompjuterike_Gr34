@@ -1,0 +1,2 @@
+# RrjetaKompjuterike_Gr34
+
