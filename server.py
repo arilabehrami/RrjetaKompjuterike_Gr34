@@ -1,4 +1,4 @@
-
+import os
 import socket
 
 
@@ -36,3 +36,9 @@ while True:
     conn.send(b"Pershendetje! Je lidhur me serverin.\n")
 
     conn.close()
+
+
+FILES_DIR = "server_files"
+if not os.path.exists(FILES_DIR):
+    os.makedirs(FILES_DIR)
+
