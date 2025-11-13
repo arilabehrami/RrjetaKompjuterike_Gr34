@@ -20,3 +20,26 @@ def connect_to_server():
     except Exception as e:
         print(f" Nuk u arrit lidhja me serverin: {e}")
         return None
+
+
+
+def main():
+    print("=== SISTEMI I KLIENTIT ===\n")
+    print("Zgjedh rolin tënd:")
+    print("1. Admin (qasje e plotë: /list, /read, /upload, /download, /delete, /info)")
+    print("2. Përdorues i thjeshtë (vetëm /list, /read, /info)\n")
+
+    choice = input("Zgjedh (1 ose 2): ").strip()
+    if choice == "1":
+        role = "admin"
+        print("\n Je lidhur si ADMIN.\n")
+    else:
+        role = "user"
+        print("\n Je lidhur si PËRDORUES i thjeshtë.\n")
+
+  
+    client_socket = connect_to_server()
+    if not client_socket:
+        return
+
+  
