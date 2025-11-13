@@ -1,6 +1,9 @@
 import os
 import socket
 
+import threading
+from monitoring.monitor import Monitor
+
 IP = "127.0.0.1"      
 PORT = 5000          
 MAX_CLIENTS = 4       
@@ -55,6 +58,38 @@ def info_file(filename):
     size = os.path.getsize(path)
     return f"Emri: {filename}\nMadhësia: {size} bytes\n"
 
+client_sockets = {}
+client_lock = threading.Lock()
+def close_socket_by_id(sock_id):
+   
+    with client_lock:
+        sock = client_sockets.get(sock_id)
+        if sock:
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except Exception:
+                pass
+            try:
+                sock.close()
+            except Exception:
+                pass
+           
+            del client_sockets[sock_id]
+          
+            print(f"[Monitor callback] Socket with id {sock_id} was closed due to timeout.")
+
+STATS_FILE = 'monitoring/server_stats.txt'
+UPDATE_INTERVAL = 5         
+TIMEOUT_SECONDS = 60       
+
+monitor = Monitor(stats_file_path=STATS_FILE, update_interval=UPDATE_INTERVAL, timeout_seconds=TIMEOUT_SECONDS)
+monitor.start(close_callback=close_socket_by_id)
+
+
+admin_thread = threading.Thread(target=monitor.admin_console_loop, daemon=True)
+admin_thread.start()
+
+
 while True:
     conn, addr = server_socket.accept()  
     print(f"Klient i ri nga: {addr}")
@@ -65,6 +100,11 @@ while True:
         conn.close()
         continue
 
+     sock_id = id(conn)
+    with client_lock:
+        client_sockets[sock_id] = conn
+    monitor.register(sock_id, addr)   
+
     clients.append(addr)
     print(f"Lidhje aktive: {len(clients)} klientë")
 
@@ -74,8 +114,20 @@ while True:
     try:
         data = conn.recv(4096).decode().strip()
         if not data:
+             try:
+                monitor.unregister(sock_id)
+            except Exception:
+                pass
+            with client_lock:
+                client_sockets.pop(sock_id, None)
+
             conn.close()
             continue
+
+            try:
+                  monitor.record_received(sock_id, len(data.encode('utf-8')))
+            except Exception:
+                pass
 
         print(f"[{addr}] -> {data}")
         parts = data.split(" ", 2)
@@ -99,7 +151,31 @@ while True:
         conn.send(response.encode('utf-8'))
 
     except Exception as e:
+                try:
+            monitor.unregister(sock_id)
+        except Exception:
+            pass
+        with client_lock:
+            client_sockets.pop(sock_id, None)
+         try: 
         conn.send(f"Gabim: {e}\n".encode('utf-8'))
+         except Exception:
+            pass
+
+         try:
+             monitor.unregister(sock_id)
+        except Exception:
+            pass
+    with client_lock:
+        client_sockets.pop(sock_id, None)
+    
+    try:
+        if addr in clients:
+            clients.remove(addr)
+    except Exception:
+        pass
+    
+
 
     conn.close()
     print(f"Klienti {addr} u shkëput.")
