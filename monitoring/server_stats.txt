@@ -1,0 +1,7 @@
+{
+  "timestamp": 1763150536.607615,
+  "num_active_connections": 0,
+  "total_bytes": 0,
+  "total_messages": 0,
+  "clients": {}
+}
