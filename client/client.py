@@ -42,4 +42,47 @@ def main():
     if not client_socket:
         return
 
+
+ while True:
+        command = input("\nShkruaj komandë (/exit për dalje): ").strip()
+
+        if command == "/exit":
+            print("Lidhja u mbyll nga klienti.")
+            client_socket.close()
+            break
+
+        # Kontrollo privilegjet e user-it
+        if role == "user":
+            allowed = ["/list", "/read", "/info"]
+            if not any(command.startswith(cmd) for cmd in allowed):
+                print("Nuk ke leje për këtë komandë. Lejohen vetëm: /list, /read <file>, /info <file>\n")
+                continue
+
+        try:
+            # Admini dërgon menjëherë
+            if role == "admin":
+                client_socket.send(command.encode())
+            else:
+                # Përdoruesi pret pak (për të simuluar prioritet më të ulët)
+                time.sleep(0.4)
+                client_socket.send(command.encode())
+
+            # Merr përgjigjen
+            response = client_socket.recv(8192).decode()
+            print("\n Përgjigja nga serveri:")
+            print("---------------------------------------")
+            print(response)
+            print("---------------------------------------")
+
+            # Serveri mbyll lidhjen pas komandës, prandaj rilidhemi
+            client_socket.close()
+            client_socket = connect_to_server()
+            if not client_socket:
+                break
+
+        except Exception as e:
+            print(f"Gabim gjatë komunikimit: {e}")
+            client_socket.close()
+            break
+
   
