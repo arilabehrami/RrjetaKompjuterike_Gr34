@@ -1,181 +1,86 @@
-import os
-import socket
-
-import threading
+import os, socket, threading, time
 from monitoring.monitor import Monitor
 
-IP = "127.0.0.1"      
-PORT = 5000          
-MAX_CLIENTS = 4       
+IP, PORT, MAX_CLIENTS = "127.0.0.1", 5000, 4
+FILES_DIR = "server_files"
+os.makedirs(FILES_DIR, exist_ok=True)
+ADMIN_PASS = "adminpass"
+STATS_FILE = 'monitoring/server_stats.txt'
+UPDATE_INTERVAL, TIMEOUT_SECONDS = 5, 60
 
 server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 server_socket.bind((IP, PORT))
 server_socket.listen()
-print(f"Serveri është duke dëgjuar në {IP}:{PORT}")
+print(f"Server listening on {IP}:{PORT}")
 
-clients = []  
+client_sockets, client_meta = {}, {}
+lock = threading.Lock()
+monitor = Monitor(STATS_FILE, UPDATE_INTERVAL, TIMEOUT_SECONDS)
+monitor.start(close_callback=lambda sock_id: close_socket(sock_id))
+threading.Thread(target=monitor.admin_console_loop, daemon=True).start()
 
-FILES_DIR = "server_files"
-if not os.path.exists(FILES_DIR):
-    os.makedirs(FILES_DIR)
-def list_files():
-    files = os.listdir(FILES_DIR)
-    if not files:
-        return "Nuk ka asnjë file në server.\n"
-    return "\n".join(files) + "\n"
+def close_socket(sock_id):
+    with lock:
+        sock = client_sockets.pop(sock_id, None)
+        client_meta.pop(sock_id, None)
+    if sock:
+        try: sock.shutdown(socket.SHUT_RDWR); sock.close()
+        except: pass
+        print(f"Socket {sock_id} closed (timeout).")
 
-def read_file(filename):
-    path = os.path.join(FILES_DIR, filename)
-    if not os.path.exists(path):
-        return "File nuk ekziston.\n"
-    with open(path, "r", encoding="utf-8") as f:
-        return f.read() + "\n"
+def list_files(): return "\n".join(os.listdir(FILES_DIR)) + "\n" if os.listdir(FILES_DIR) else "Nuk ka file.\n"
+def read_file(f): return open(os.path.join(FILES_DIR,f),"r",encoding="utf-8").read()+"\n" if os.path.exists(os.path.join(FILES_DIR,f)) else "File nuk ekziston.\n"
+def delete_file(f): os.remove(os.path.join(FILES_DIR,f)); return f"File '{f}' u fshi.\n" if os.path.exists(os.path.join(FILES_DIR,f)) else "File nuk ekziston.\n"
+def info_file(f): p=os.path.join(FILES_DIR,f); return f"{f} size={os.path.getsize(p)} bytes\n" if os.path.exists(p) else "File nuk ekziston.\n"
 
-def upload_file(filename, content):
-    path = os.path.join(FILES_DIR, filename)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(content)
-    return f"File '{filename}' u ngarkua me sukses.\n"
+def safe_send(sock, data): 
+    try: sock.sendall(data)
+    except: sock.close()
 
-def download_file(filename):
-    path = os.path.join(FILES_DIR, filename)
-    if not os.path.exists(path):
-        return "File nuk ekziston.\n"
-    with open(path, "r", encoding="utf-8") as f:
-        return f.read() + "\n"
+def handle_client(conn, addr):
+    sock_id = id(conn)
+    with lock: client_sockets[sock_id]=conn; client_meta[sock_id]={'role':'user','addr':addr}
+    monitor.register(sock_id, addr)
+    safe_send(conn, b"Welcome! ROLE user/admin <pass>. Commands: /list, /read <file>, /upload <file> <text>, /delete <file>, /info <file>\n")
+    while True:
+        try: data = conn.recv(4096)
+        except: break
+        if not data: break
+        monitor.record_received(sock_id, len(data))
+        text = data.decode('utf-8', errors='ignore').strip()
+        if not text: continue
+        cmd,*args = text.split(" ",1)
+        role = client_meta[sock_id]['role']
 
-def delete_file(filename):
-    path = os.path.join(FILES_DIR, filename)
-    if not os.path.exists(path):
-        return "File nuk ekziston.\n"
-    os.remove(path)
-    return f"File '{filename}' u fshi me sukses.\n"
-
-def info_file(filename):
-    path = os.path.join(FILES_DIR, filename)
-    if not os.path.exists(path):
-        return "File nuk ekziston.\n"
-    size = os.path.getsize(path)
-    return f"Emri: {filename}\nMadhësia: {size} bytes\n"
-
-client_sockets = {}
-client_lock = threading.Lock()
-def close_socket_by_id(sock_id):
-   
-    with client_lock:
-        sock = client_sockets.get(sock_id)
-        if sock:
-            try:
-                sock.shutdown(socket.SHUT_RDWR)
-            except Exception:
-                pass
-            try:
-                sock.close()
-            except Exception:
-                pass
-           
-            del client_sockets[sock_id]
-          
-            print(f"[Monitor callback] Socket with id {sock_id} was closed due to timeout.")
-
-STATS_FILE = 'monitoring/server_stats.txt'
-UPDATE_INTERVAL = 5         
-TIMEOUT_SECONDS = 60       
-
-monitor = Monitor(stats_file_path=STATS_FILE, update_interval=UPDATE_INTERVAL, timeout_seconds=TIMEOUT_SECONDS)
-monitor.start(close_callback=close_socket_by_id)
-
-
-admin_thread = threading.Thread(target=monitor.admin_console_loop, daemon=True)
-admin_thread.start()
-
-
-while True:
-    conn, addr = server_socket.accept()  
-    print(f"Klient i ri nga: {addr}")
-
-    if len(clients) >= MAX_CLIENTS:
-        print("Serveri është plot. Lidhja u refuzua.")
-        conn.send("Serveri është plot. Provo më vonë.\n".encode('utf-8'))
-        conn.close()
-        continue
-
-     sock_id = id(conn)
-    with client_lock:
-        client_sockets[sock_id] = conn
-    monitor.register(sock_id, addr)   
-
-    clients.append(addr)
-    print(f"Lidhje aktive: {len(clients)} klientë")
-
-    conn.send("Përshëndetje! Je lidhur me serverin.\n".encode('utf-8'))
-    conn.send("Shkruaj komandë: /list, /read <file>, /upload <file> <text>, /download <file>, /delete <file>, /info <file>\n".encode('utf-8'))
-
-    try:
-        data = conn.recv(4096).decode().strip()
-        if not data:
-             try:
-                monitor.unregister(sock_id)
-            except Exception:
-                pass
-            with client_lock:
-                client_sockets.pop(sock_id, None)
-
-            conn.close()
+        if cmd.lower()=="role":
+            r=args[0].lower() if args else "user"
+            if r=="admin" and len(args)>1 and args[1]==ADMIN_PASS: role='admin'
+            client_meta[sock_id]['role']=role
+            safe_send(conn, f"Assigned role: {role}\n".encode())
             continue
 
-            try:
-                  monitor.record_received(sock_id, len(data.encode('utf-8')))
-            except Exception:
-                pass
+        response="Komandë e panjohur.\n"
+        if cmd=="/list": response=list_files()
+        elif cmd=="/read" and args: response=read_file(args[0])
+        elif cmd=="/delete" and args and role=="admin": response=delete_file(args[0])
+        elif cmd=="/info" and args: response=info_file(args[0])
+        elif cmd=="/stats" and role=="admin": monitor.print_stats_to_console(); response="STATS shfaqur\n"
 
-        print(f"[{addr}] -> {data}")
-        parts = data.split(" ", 2)
-        cmd = parts[0]
+        safe_send(conn, response.encode())
 
-        if cmd == "/list":
-            response = list_files()
-        elif cmd == "/read" and len(parts) > 1:
-            response = read_file(parts[1])
-        elif cmd == "/upload" and len(parts) > 2:
-            response = upload_file(parts[1], parts[2])
-        elif cmd == "/download" and len(parts) > 1:
-            response = download_file(parts[1])
-        elif cmd == "/delete" and len(parts) > 1:
-            response = delete_file(parts[1])
-        elif cmd == "/info" and len(parts) > 1:
-            response = info_file(parts[1])
-        else:
-            response = "Komandë e panjohur ose parametra të munguar.\n"
+    close_socket(sock_id)
+    print(f"Klienti {addr} shkëput.")
 
-        conn.send(response.encode('utf-8'))
+def accept_loop():
+    while True:
+        try: conn, addr = server_socket.accept()
+        except: continue
+        with lock:
+            if len(client_sockets)>=MAX_CLIENTS: safe_send(conn,b"Server full.\n"); conn.close(); continue
+        print(f"New client {addr}")
+        threading.Thread(target=handle_client,args=(conn,addr),daemon=True).start()
 
-    except Exception as e:
-                try:
-            monitor.unregister(sock_id)
-        except Exception:
-            pass
-        with client_lock:
-            client_sockets.pop(sock_id, None)
-         try: 
-        conn.send(f"Gabim: {e}\n".encode('utf-8'))
-         except Exception:
-            pass
-
-         try:
-             monitor.unregister(sock_id)
-        except Exception:
-            pass
-    with client_lock:
-        client_sockets.pop(sock_id, None)
-    
-    try:
-        if addr in clients:
-            clients.remove(addr)
-    except Exception:
-        pass
-    
-
-
-    conn.close()
-    print(f"Klienti {addr} u shkëput.")
+if __name__=="__main__":
+    print("Server running...")
+    accept_loop()
