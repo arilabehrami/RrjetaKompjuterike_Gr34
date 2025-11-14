@@ -85,4 +85,6 @@ def main():
             client_socket.close()
             break
 
-  
+  if __name__ == "__main__":
+    main()
+    
