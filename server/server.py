@@ -73,3 +73,81 @@ def search_files(keyword):
 def safe_send(sock, data): 
     try: sock.sendall(data)
     except: sock.close()
+
+def handle_client(conn, addr):
+    sock_id = id(conn)
+    with lock: 
+        client_sockets[sock_id] = conn
+        client_meta[sock_id] = {'role':'user', 'addr':addr}
+    monitor.register(sock_id, addr)
+    safe_send(conn, b"Welcome! ROLE user/admin <pass>. Commands: /list, /read <file>, /upload <file> <text>, /delete <file>, /info <file>, /download <file>, /search <keyword>\n")
+
+    while True:
+        try: data = conn.recv(8192)
+        except: break
+        if not data: break
+        monitor.record_received(sock_id, len(data))
+        text = data.decode('utf-8', errors='ignore').strip()
+        if not text: continue
+        cmd,*args = text.split(" ",1)
+        role = client_meta[sock_id]['role']
+
+        if cmd.lower()=="role":
+            parts = args[0].split() if args else []
+            r = parts[0].lower() if len(parts) > 0 else "user"
+            passwd = parts[1] if len(parts) > 1 else ""
+            if r=="admin" and passwd==ADMIN_PASS:
+                role='admin'
+            client_meta[sock_id]['role'] = role
+            safe_send(conn, f"Assigned role: {role}\n".encode())
+            continue
+
+        response = "Komandë e panjohur.\n"
+        try:
+            if cmd=="/list":
+                response = list_files()
+            elif cmd=="/read" and args:
+                response = read_file(args[0])
+            elif cmd=="/delete" and args:
+                if role=="admin":
+                    response = delete_file(args[0])
+                else:
+                    response = "Nuk ke privilegje për këtë komandë.\n"
+            elif cmd=="/info" and args:
+                response = info_file(args[0])
+            elif cmd=="/upload" and args:
+                if role=="admin":
+                    file_name, content = args[0].split(" ",1)
+                    response = upload_file(file_name, content)
+                else:
+                    response = "Nuk ke privilegje për këtë komandë.\n"
+            elif cmd=="/download" and args:
+                response = download_file(args[0])
+            elif cmd=="/search" and args:
+                response = search_files(args[0])
+            elif cmd=="/stats" and role=="admin":
+                monitor.print_stats_to_console()
+                response="STATS shfaqur\n"
+        except Exception as e:
+            response=f"Gabim: {e}\n"
+
+        safe_send(conn, response.encode())
+
+    close_socket(sock_id)
+    print(f"Klienti {addr} shkëput.")
+
+def accept_loop():
+    while True:
+        try: conn, addr = server_socket.accept()
+        except: continue
+        with lock:
+            if len(client_sockets) >= MAX_CLIENTS:
+                safe_send(conn,b"Server full.\n")
+                conn.close()
+                continue
+        print(f"New client {addr}")
+        threading.Thread(target=handle_client,args=(conn,addr),daemon=True).start()
+
+if __name__=="__main__":
+    print("Server running...")
+    accept_loop()
