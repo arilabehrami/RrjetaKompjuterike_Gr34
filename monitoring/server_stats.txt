@@ -1,17 +1,7 @@
 {
-  "timestamp": 1763219314.2334,
-  "num_active_connections": 1,
+  "timestamp": 1763232108.1514823,
+  "num_active_connections": 0,
   "total_bytes": 0,
   "total_messages": 0,
-  "clients": {
-    "1743948325712": {
-      "addr": [
-        "127.0.0.1",
-        63876
-      ],
-      "last_active": 1763219191.2940748,
-      "msg_count": 0,
-      "bytes": 0
-    }
-  }
+  "clients": {}
 }

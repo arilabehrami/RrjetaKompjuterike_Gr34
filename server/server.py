@@ -27,7 +27,7 @@ def close_socket(sock_id):
         except: pass
         print(f"Socket {sock_id} closed (timeout).")
 
-monitor.start(close_callback=lambda sock_id: close_socket(sock_id))
+monitor.start(close_callback=lambda sock_id: close_client(sock_id))
 threading.Thread(target=monitor.admin_console_loop, daemon=True).start()
 
 def list_files(): 
@@ -147,6 +147,17 @@ def accept_loop():
                 continue
         print(f"New client {addr}")
         threading.Thread(target=handle_client,args=(conn,addr),daemon=True).start()
+
+def close_client(sock_id):
+    try:
+        sock = client_sockets[sock_id]
+        sock.close()
+    except:
+        pass
+    finally:
+        monitor.unregister(sock_id)
+
+
 
 if __name__=="__main__":
     print("Server running...")
