@@ -65,7 +65,7 @@ def main():
             client_socket = connect_to_server()
             if not client_socket:
                 break
-
+                
         except Exception as e:
             print(f"Gabim gjatë komunikimit: {e}")
             try:
@@ -73,6 +73,8 @@ def main():
             except:
                 pass
             break
+
+
 
 if __name__ == "__main__":
     main()
