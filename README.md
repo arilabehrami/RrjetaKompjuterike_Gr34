@@ -54,9 +54,6 @@ Serveri menaxhon lidhjet dhe komunikimin e klientëve, ndërsa klientët mund t�
 ---
 
 ### Udhëzime Ekzekutimi
-
-#### Server
 ```bash
 python -m server.server
-```bash
-python client.py
+python -m client.client
