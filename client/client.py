@@ -10,6 +10,7 @@ def connect_to_server():
         client_socket.connect((IP, PORT))
         print(f"\n Lidhja me serverin {IP}:{PORT} u krye me sukses.\n")
         print(client_socket.recv(4096).decode(), end="")
+        print(client_socket.recv(4096).decode(), end="")
         return client_socket
     except Exception as e:
         print(f" Nuk u arrit lidhja me serverin: {e}")
