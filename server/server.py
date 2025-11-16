@@ -27,7 +27,7 @@ def close_socket(sock_id):
         except: pass
         print(f"Socket {sock_id} closed (timeout).")
 
-monitor.start(close_callback=lambda sock_id: close_client(sock_id))
+monitor.start(close_callback=lambda sock_id: close_socket(sock_id))
 threading.Thread(target=monitor.admin_console_loop, daemon=True).start()
 
 def list_files(): 
