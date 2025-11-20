@@ -131,7 +131,7 @@ def handle_client(conn, addr):
         except Exception as e:
             response=f"Gabim: {e}\n"
 
-        safe_send(conn, response.encode())
+        safe_send(conn, (response + "\n").encode())
 
     close_socket(sock_id)
     print(f"Klienti {addr} shkëput.")

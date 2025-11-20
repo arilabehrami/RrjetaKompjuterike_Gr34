@@ -1,80 +1,81 @@
+import sys
+import threading
 import socket
-import time
 
-IP = "127.0.0.1"
-PORT = 5000
+stop_thread = False  # flag për të ndaluar thread-in
 
-def connect_to_server():
-    try:
-        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        client_socket.connect((IP, PORT))
-        print(f"\n Lidhja me serverin {IP}:{PORT} u krye me sukses.\n")
-        print(client_socket.recv(4096).decode(), end="")
-        print(client_socket.recv(4096).decode(), end="")
-        return client_socket
-    except Exception as e:
-        print(f" Nuk u arrit lidhja me serverin: {e}")
-        return None
+def receive_messages(sock):
+    global stop_thread
+    buffer = ""
+    while not stop_thread:
+        try:
+            data = sock.recv(8192)
+            if not data:
+                break
+
+            buffer += data.decode()
+            while "\n" in buffer:
+                line, buffer = buffer.split("\n", 1)
+                sys.stdout.write(f"\n{line}\n\nShkruaj komandë (/exit për dalje): ")
+                sys.stdout.flush()
+        except:
+            break
 
 def main():
-    print("=== SISTEMI I KLIENTIT ===\n")
-    print("Zgjedh rolin tënd:")
-    print("1. Admin")
-    print("2. Përdorues i thjeshtë\n")
-
-    choice = input("Zgjedh (1 ose 2): ").strip()
-    if choice == "1":
-        role = "admin"
-        print("\n Je lidhur si ADMIN.\n")
-    else:
+    global stop_thread
+    role = input("Zgjedh rolin tënd (admin/user): ").strip().lower()
+    if role not in ["admin","user"]:
         role = "user"
-        print("\n Je lidhur si PËRDORUES i thjeshtë.\n")
 
-    client_socket = connect_to_server()
-    if not client_socket:
-        return
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client_socket.connect(("127.0.0.1", 5000))
+
+    if role == "admin":
+        client_socket.send(b"role admin adminpass\n")
+    else:
+        client_socket.send(b"role user\n")
+
+    recv_thread = threading.Thread(target=receive_messages, args=(client_socket,))
+    recv_thread.start()
+
+    allowed_user_commands = ["/read", "/list", "/search"]
 
     while True:
-        command = input("\nShkruaj komandë (/exit për dalje): ").strip()
-
-        if command == "/exit":
-            print("Lidhja u mbyll nga klienti.")
-            client_socket.close()
-            break
-
-        if role == "user":
-            allowed = ["/list", "/read", "/info"]
-            if not any(command.startswith(cmd) for cmd in allowed):
-                print("Nuk ke leje për këtë komandë.\n")
-                continue
-
         try:
-            if role == "admin":
-                client_socket.send(command.encode())
-            else:
-                time.sleep(0.4)
-                client_socket.send(command.encode())
+            command = input().strip()
 
-            response = client_socket.recv(8192).decode()
-            print("\n Përgjigja nga serveri:")
-            print("---------------------------------------")
-            print(response)
-            print("---------------------------------------")
-
-            client_socket.close()
-            client_socket = connect_to_server()
-            if not client_socket:
+            if command == "/exit":
+                stop_thread = True
+                client_socket.close()
+                recv_thread.join()
                 break
-                
+
+            # Kontrolli për user
+            if role == "user":
+                if not any(command.startswith(cmd) for cmd in allowed_user_commands):
+                    print("Komanda nuk ekziston ose nuk ke autorizim për të. Vetëm /read, /list dhe /search janë të lejuara.")
+                    continue
+
+            # Dërgo komandën te serveri
+            try:
+                client_socket.sendall((command + "\n").encode())
+            except:
+                print("Lidhja me serverin është mbyllur.")
+                stop_thread = True
+                break
+
+        except KeyboardInterrupt:
+            # Ctrl+C si exit
+            stop_thread = True
+            client_socket.close()
+            recv_thread.join()
+            break
         except Exception as e:
             print(f"Gabim gjatë komunikimit: {e}")
-            try:
-                client_socket.close()
-            except:
-                pass
+            stop_thread = True
+            client_socket.close()
+            recv_thread.join()
             break
-
-
 
 if __name__ == "__main__":
     main()
