@@ -1,7 +1,3 @@
-# RrjetaKompjuterike_Gr34
-
-## Projekt 2 – Rrjetat Kompjuterike
-
 ### Përshkrimi
 Ky projekt implementon një sistem **klient-server TCP** në Python për një rrjet lokal me të paktën 4 pajisje.  
 Serveri menaxhon lidhjet dhe komunikimin e klientëve, ndërsa klientët mund të lexojnë, shkruajnë, dërgojnë, marrin dhe menaxhojnë file në server sipas privilegjeve.
